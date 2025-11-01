@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SE＋プレイリスト統合プレイヤー</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>🎵 SEボタン＋マイ曲プレイヤー</h1>
+
+  <!-- 🔊 SEボタン（初期音あり） -->
+  <section>
+    <h2>🔊 SEボタン</h2>
+    <div class="se-grid">
+      <div class="se" data-slot="1" data-default="kirakomesalada.mp3">
+        <button class="se-play">🐶 SE1</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">dog.mp3</div>
+      </div>
+      <div class="se" data-slot="2" data-default="kirakomesalada2.mp3">
+        <button class="se-play">🐱 SE2</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">cat.mp3</div>
+      </div>
+      <div class="se" data-slot="3" data-default="patison.mp3">
+        <button class="se-play">👏 SE3</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">applause.mp3</div>
+      </div>
+      <div class="se" data-slot="4" data-default="patison2.mp3">
+        <button class="se-play">🔔 SE4</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">bell.mp3</div>
+      </div>
+      <div class="se" data-slot="5" data-default="SE.mp3">
+        <button class="se-play">🥁 SE5</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">drum.mp3</div>
+      </div>
+      <div class="se" data-slot="6" data-default="SE2.mp3">
+        <button class="se-play">🎵 SE6</button>
+        <label class="set-btn">🎚️ セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-name">whistle.mp3</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 🎶 プレイリスト機能 -->
+  <section>
+    <h2>📂 プレイリスト</h2>
+    <input type="file" id="fileInput" accept="audio/*" multiple>
+    <ul id="playlist"></ul>
+    <div class="controls">
+      <button id="play">▶️ 再生</button>
+      <button id="stop">⏹️ 停止</button>
+      <button id="loop">🔁 ループOFF</button>
+      <button id="clear">🗑️ 全削除</button>
+    </div>
+    <p id="status">再生リスト：なし</p>
+  </section>
+
+  <script src="script.js"></script>
+</body>
+</html>
