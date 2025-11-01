@@ -1,46 +1,56 @@
-const seButtons = document.querySelectorAll(".se");
 const MAX_SAVE_SIZE_MB = 5;
 
 function bytesToMB(bytes) {
   return bytes / (1024 * 1024);
 }
 
-seButtons.forEach((se) => {
+document.querySelectorAll(".se").forEach((se) => {
   const slot = se.dataset.slot;
-  const defaultSrc = se.dataset.default;
   const playBtn = se.querySelector(".se-play");
   const setInput = se.querySelector('input[type="file"]');
   const resetBtn = se.querySelector(".reset-btn");
   const nameEl = se.querySelector(".se-name");
 
-  // 保存済み音源をチェック
-  const saved = localStorage.getItem(`se_${slot}_data`);
-  const savedName = localStorage.getItem(`se_${slot}_name`);
-  let audio = new Audio(saved ? saved : defaultSrc);
-  let playing = false;
-  nameEl.textContent = savedName || defaultSrc.split("/").pop();
+  let currentAudio = null;
+  let isPlaying = false;
 
-  // 再生・停止
+  // 保存データ読み込み
+  const savedData = localStorage.getItem(`se_${slot}_data`);
+  const savedName = localStorage.getItem(`se_${slot}_name`);
+
+  if (savedData) {
+    currentAudio = new Audio(savedData);
+    nameEl.textContent = savedName;
+  } else {
+    nameEl.textContent = "未割当";
+  }
+
+  // ▶️ 再生・停止
   playBtn.addEventListener("click", () => {
-    if (!audio) return;
-    if (!playing) {
-      audio.currentTime = 0;
-      audio.play();
-      playing = true;
+    if (!currentAudio) {
+      alert("このSEボタンにはまだ音がセットされていません。");
+      return;
+    }
+
+    if (!isPlaying) {
+      currentAudio.currentTime = 0;
+      currentAudio.play();
+      isPlaying = true;
       playBtn.style.backgroundColor = "#99ff99";
     } else {
-      audio.pause();
-      audio.currentTime = 0;
-      playing = false;
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      isPlaying = false;
       playBtn.style.backgroundColor = "#ffcc66";
     }
-    audio.onended = () => {
-      playing = false;
+
+    currentAudio.onended = () => {
+      isPlaying = false;
       playBtn.style.backgroundColor = "#ffcc66";
     };
   });
 
-  // セット（音変更）
+  // 🎵 セット
   setInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -55,28 +65,31 @@ seButtons.forEach((se) => {
       const dataUrl = reader.result;
       localStorage.setItem(`se_${slot}_data`, dataUrl);
       localStorage.setItem(`se_${slot}_name`, file.name);
-      audio = new Audio(dataUrl);
+
+      currentAudio = new Audio(dataUrl);
       nameEl.textContent = file.name;
+
       alert(`SE${slot} に「${file.name}」をセットしました！`);
     };
     reader.readAsDataURL(file);
   });
 
-  // リセット（初期音に戻す）
+  // 🔄 リセット
   resetBtn.addEventListener("click", () => {
     localStorage.removeItem(`se_${slot}_data`);
     localStorage.removeItem(`se_${slot}_name`);
-    audio = new Audio(defaultSrc);
-    nameEl.textContent = defaultSrc.split("/").pop();
-    alert(`SE${slot} を初期音に戻しました。`);
+    currentAudio = null;
+    nameEl.textContent = "未割当";
+    playBtn.style.backgroundColor = "#ffcc66";
   });
 });
 
-/******************** 🎶 プレイリスト機能 ********************/
+/******************** 🎶 プレイリスト機能（途中停止対応） ********************/
 let playlist = [];
 let isPlaying = false;
 let isLoop = false;
 let currentAudio = null;
+let currentIndex = 0;
 
 const playlistEl = document.getElementById("playlist");
 const statusEl = document.getElementById("status");
@@ -91,7 +104,9 @@ document.getElementById("fileInput").addEventListener("change", (e) => {
     const delBtn = document.createElement("button");
     delBtn.textContent = "❌ 削除";
     delBtn.onclick = () => {
-      playlist = playlist.filter((f) => f !== file);
+      const idx = playlist.indexOf(file);
+      if (idx === currentIndex && currentAudio) currentAudio.pause();
+      playlist.splice(idx, 1);
       li.remove();
       updateStatus();
     };
@@ -100,14 +115,39 @@ document.getElementById("fileInput").addEventListener("change", (e) => {
     playlistEl.appendChild(li);
   }
   updateStatus();
+  e.target.value = "";
 });
 
+// ▶️ 再生・再開
 document.getElementById("play").addEventListener("click", async () => {
-  if (isPlaying || playlist.length === 0) return;
+  if (isPlaying) return;
+  if (playlist.length === 0) return alert("再生リストが空です");
+
   isPlaying = true;
-  do {
-    for (const f of playlist) {
-      const url = URL.createObjectURL(f);
+
+  if (currentAudio && currentAudio.paused && currentAudio.currentTime > 0) {
+    currentAudio.play();
+    return;
+  }
+
+  for (let i = currentIndex; i < playlist.length; i++) {
+    currentIndex = i;
+    const file = playlist[i];
+    const url = URL.createObjectURL(file);
+    currentAudio = new Audio(url);
+    await new Promise((resolve) => {
+      currentAudio.play();
+      currentAudio.onended = resolve;
+    });
+    if (!isPlaying) break;
+  }
+
+  while (isLoop && isPlaying) {
+    currentIndex = 0;
+    for (let i = 0; i < playlist.length; i++) {
+      currentIndex = i;
+      const file = playlist[i];
+      const url = URL.createObjectURL(file);
       currentAudio = new Audio(url);
       await new Promise((resolve) => {
         currentAudio.play();
@@ -115,23 +155,41 @@ document.getElementById("play").addEventListener("click", async () => {
       });
       if (!isPlaying) break;
     }
-  } while (isLoop && isPlaying);
+  }
+
   isPlaying = false;
 });
 
+// ⏸ 一時停止
+document.getElementById("pause").addEventListener("click", () => {
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+    isPlaying = false;
+  }
+});
+
+// ⏹ 停止
 document.getElementById("stop").addEventListener("click", () => {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  }
+  currentIndex = 0;
   isPlaying = false;
-  if (currentAudio) currentAudio.pause();
 });
 
+// 🔁 ループON/OFF
 document.getElementById("loop").addEventListener("click", (e) => {
   isLoop = !isLoop;
   e.target.textContent = isLoop ? "🔁 ループ中" : "🔁 ループOFF";
 });
 
+// 🗑 全削除
 document.getElementById("clear").addEventListener("click", () => {
   playlist = [];
   playlistEl.innerHTML = "";
+  currentIndex = 0;
+  if (currentAudio) currentAudio.pause();
   updateStatus();
 });
 
