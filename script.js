@@ -119,120 +119,230 @@ document.querySelectorAll(".se").forEach((se) => {
 });
 
 /******************** 🎶 プレイリスト機能（途中停止対応） ********************/
+// =====================
+// プレイリスト・プレイヤー
+// =====================
+const fileInput = document.getElementById('fileInput');
+const listEl = document.getElementById('playlist');
+const statusEl = document.getElementById('status');
+
+const btnPrev = document.getElementById('prev');
+const btnPlay = document.getElementById('play');
+const btnPause = document.getElementById('pause');
+const btnStop = document.getElementById('stop');
+const btnNext = document.getElementById('next');
+const btnShuffle = document.getElementById('shuffle');
+const btnSongLoop = document.getElementById('songloop');
+const btnLoop = document.getElementById('loop');
+const btnClear = document.getElementById('clear');
+
 let playlist = [];
-let plIsPlaying = false;   // ← グローバルの名前衝突を避けるためリネーム
-let plIsLoop = false;
-let plCurrentAudio = null;
-let plCurrentIndex = 0;
+let currentIndex = -1;
 
-const playlistEl = document.getElementById("playlist");
-const statusEl = document.getElementById("status");
+let isLoop = false;          // プレイリスト全体ループ
+let isShuffle = false;       // シャッフル
+let isSongLoop = false;      // 単曲ループ（Audio.loop）
 
-document.getElementById("fileInput").addEventListener("change", (e) => {
-  const files = Array.from(e.target.files || []);
-  for (const file of files) {
-    playlist.push(file);
-    const li = document.createElement("li");
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = file.name;
-    const delBtn = document.createElement("button");
-    delBtn.textContent = "❌ 削除";
-    delBtn.onclick = () => {
-      const idx = playlist.indexOf(file);
-      if (idx > -1) {
-        if (idx === plCurrentIndex && plCurrentAudio) plCurrentAudio.pause();
-        playlist.splice(idx, 1);
-        li.remove();
-        updateStatus();
-      }
-    };
-    li.appendChild(nameSpan);
-    li.appendChild(delBtn);
-    playlistEl.appendChild(li);
-  }
-  updateStatus();
-  e.target.value = "";
+const player = new Audio();
+
+
+
+// -------- 再生 --------
+btnPlay.addEventListener('click', () => {
+  if (playlist.length === 0) return;
+  if (currentIndex === -1) currentIndex = 0;
+  playCurrent();
 });
 
-// ▶️ 再生・再開
-document.getElementById("play").addEventListener("click", async () => {
-  if (plIsPlaying) return;
-  if (playlist.length === 0) return alert("再生リストが空です");
+// ======== 一時停止 ========
+btnPause.addEventListener('click', () => {
+  player.pause();
+  updateStatus('(一時停止)');
+});
 
-  plIsPlaying = true;
+// ======== 停止 ========
+btnStop.addEventListener('click', stopPlayback);
 
-  // 再開（ポーズからの続き）
-  if (plCurrentAudio && plCurrentAudio.paused && plCurrentAudio.currentTime > 0) {
-    plCurrentAudio.play();
+// ======== 次の曲（NEXT） ========
+btnNext.addEventListener('click', () => {
+  goNext(false);
+});
+
+// ======== 前の曲（PREV） ========
+btnPrev.addEventListener('click', () => {
+  goPrev();
+});
+
+// ======== シャッフル切替 ========
+btnShuffle.addEventListener('click', () => {
+  isShuffle = !isShuffle;
+  btnShuffle.textContent = isShuffle ? '🔀 シャッフルON' : '🔀 シャッフルOFF';
+});
+
+// ======== 単曲ループ（Audio.loop利用） ========
+btnSongLoop.addEventListener('click', () => {
+  isSongLoop = !isSongLoop;
+  player.loop = isSongLoop;
+  btnSongLoop.textContent = isSongLoop ? '🔂 単曲ループON' : '🔂 単曲ループOFF';
+});
+
+// ======== プレイリストループ ========
+btnLoop.addEventListener('click', () => {
+  isLoop = !isLoop;
+  btnLoop.textContent = isLoop ? '🔁 プレイリストループON' : '🔁 プレイリストループOFF';
+});
+
+// ======== 全削除 ========
+btnClear.addEventListener('click', () => {
+  stopPlayback();
+  clearPlaylist();
+  renderList();
+  updateStatus();
+  fileInput.value = '';
+});
+
+// 曲終了時の動作
+player.addEventListener('ended', () => {
+  if (isSongLoop) return; // 単曲ループ時はそのまま戻る
+  goNext(true);
+});
+
+// ------ リストクリックで再生 ------
+listEl.addEventListener('click', (e) => {
+  const li = e.target.closest('li[data-index]');
+  if (!li) return;
+  currentIndex = Number(li.dataset.index);
+  playCurrent();
+});
+
+// ------ キーボード操作（右＝次） ------
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') goNext(false);
+});
+
+// =========================
+// 再生関数
+// =========================
+function playCurrent() {
+  if (currentIndex < 0 || currentIndex >= playlist.length) return;
+  const item = playlist[currentIndex];
+  player.src = item.url;
+  player.play();
+  renderList();
+  updateStatus(`再生中：${item.name}`);
+}
+
+// 停止
+function stopPlayback() {
+  player.pause();
+  player.currentTime = 0;
+  updateStatus('(停止)');
+  renderList();
+}
+
+// =========================
+// 次の曲ロジック
+// =========================
+function goNext(triggeredByEnded) {
+  if (playlist.length === 0) return;
+
+  if (isShuffle) {
+    let nextIndex;
+    do {
+      nextIndex = Math.floor(Math.random() * playlist.length);
+    } while (nextIndex === currentIndex && playlist.length > 1);
+    currentIndex = nextIndex;
+    playCurrent();
     return;
   }
 
-  // 途中の曲から再生を継続
-  for (let i = plCurrentIndex; i < playlist.length; i++) {
-    plCurrentIndex = i;
-    const file = playlist[i];
-    const url = URL.createObjectURL(file);
-    plCurrentAudio = new Audio(url);
-    await new Promise((resolve) => {
-      plCurrentAudio.play();
-      plCurrentAudio.onended = resolve;
-    });
-    if (!plIsPlaying) break; // 一時停止/停止された
-  }
-
-  // ループ再生
-  while (plIsLoop && plIsPlaying) {
-    plCurrentIndex = 0;
-    for (let i = 0; i < playlist.length; i++) {
-      plCurrentIndex = i;
-      const file = playlist[i];
-      const url = URL.createObjectURL(file);
-      plCurrentAudio = new Audio(url);
-      await new Promise((resolve) => {
-        plCurrentAudio.play();
-        plCurrentAudio.onended = resolve;
-      });
-      if (!plIsPlaying) break;
+  currentIndex++;
+  if (currentIndex >= playlist.length) {
+    if (isLoop) {
+      currentIndex = 0;
+    } else {
+      if (triggeredByEnded) stopPlayback();
+      currentIndex = playlist.length - 1;
+      return;
     }
   }
-
-  plIsPlaying = false;
-});
-
-// ⏸ 一時停止
-document.getElementById("pause").addEventListener("click", () => {
-  if (plCurrentAudio && !plCurrentAudio.paused) {
-    plCurrentAudio.pause();
-    plIsPlaying = false;
-  }
-});
-
-// ⏹ 停止（完全停止）
-document.getElementById("stop").addEventListener("click", () => {
-  if (plCurrentAudio) {
-    plCurrentAudio.pause();
-    plCurrentAudio.currentTime = 0;
-  }
-  plCurrentIndex = 0;
-  plIsPlaying = false;
-});
-
-// 🔁 ループON/OFF
-document.getElementById("loop").addEventListener("click", (e) => {
-  plIsLoop = !plIsLoop;
-  e.target.textContent = plIsLoop ? "🔁 ループ中" : "🔁 ループOFF";
-});
-
-// 🗑 全削除
-document.getElementById("clear").addEventListener("click", () => {
-  playlist = [];
-  playlistEl.innerHTML = "";
-  plCurrentIndex = 0;
-  if (plCurrentAudio) plCurrentAudio.pause();
-  updateStatus();
-});
-
-function updateStatus() {
-  statusEl.textContent =
-    playlist.length > 0 ? `再生リスト：${playlist.length}曲` : "再生リスト：なし";
+  playCurrent();
 }
+
+// =========================
+// 前の曲ロジック
+// =========================
+function goPrev() {
+  if (playlist.length === 0) return;
+
+  if (isShuffle) {
+    let prevIndex;
+    do {
+      prevIndex = Math.floor(Math.random() * playlist.length);
+    } while (prevIndex === currentIndex && playlist.length > 1);
+    currentIndex = prevIndex;
+    playCurrent();
+    return;
+  }
+
+  currentIndex--;
+  if (currentIndex < 0) {
+    if (isLoop) {
+      currentIndex = playlist.length - 1;
+    } else {
+      currentIndex = 0;
+      return;
+    }
+  }
+  playCurrent();
+}
+
+// =========================
+// リスト描画・整備
+// =========================
+function renderList() {
+  listEl.innerHTML = '';
+  playlist.forEach((track, i) => {
+    const li = document.createElement('li');
+    li.dataset.index = i;
+    li.textContent = track.name;
+    if (i === currentIndex && !player.paused) {
+      li.classList.add('active');
+    }
+    listEl.appendChild(li);
+  });
+}
+
+function updateStatus(extra = '') {
+  if (playlist.length === 0) {
+    statusEl.textContent = '再生リスト：なし';
+    return;
+  }
+  const now = (currentIndex >= 0 && playlist[currentIndex])
+    ? playlist[currentIndex].name : '未選択';
+  statusEl.textContent = `再生リスト：${playlist.length}曲 / 現在：${now} ${extra}`;
+}
+
+function clearPlaylist() {
+  playlist.forEach(t => URL.revokeObjectURL(t.url));
+  playlist = [];
+  currentIndex = -1;
+}
+
+fileInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+
+  files.forEach(f => {
+    const url = URL.createObjectURL(f);
+    playlist.push({
+      name: f.name,
+      url: url
+    });
+  });
+
+  renderList();
+  updateStatus();
+
+  // input の選択状態をクリア（次の複数選択に備える）
+  fileInput.value = "";
+});

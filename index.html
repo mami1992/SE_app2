@@ -71,9 +71,10 @@
     <input type="range" class="se-vol-slider" data-slot="5" min="0" max="100" step="1" value="100">
   </label>
   <span class="se-vol-value" id="se-vol-value-5">100%</span>
-</div>
-        <div class="se-name">未割当</div>
+</div>  
+      <div class="se-name">未割当</div>
       </div>
+      
       <div class="se" data-slot="6">
         <button class="se-play">🎚️ SE6</button>
         <label class="set-btn">🎵 セット<input type="file" accept="audio/*" hidden></label>
@@ -86,23 +87,55 @@
 </div>
         <div class="se-name">未割当</div>
       </div>
+
+      <div class="se" data-slot="7">
+        <button class="se-play">🎚️ SE7</button>
+        <label class="set-btn">🎵 セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-vol">
+  <label>音量:
+    <input type="range" class="se-vol-slider" data-slot="7" min="0" max="100" step="1" value="100">
+  </label>
+  <span class="se-vol-value" id="se-vol-value-7">100%</span>
+</div>
+        <div class="se-name">未割当</div>
+      </div>
+
+      <div class="se" data-slot="8">
+        <button class="se-play">🎚️ SE8</button>
+        <label class="set-btn">🎵 セット<input type="file" accept="audio/*" hidden></label>
+        <button class="reset-btn">リセット</button>
+        <div class="se-vol">
+  <label>音量:
+    <input type="range" class="se-vol-slider" data-slot="8" min="0" max="100" step="1" value="100">
+  </label>
+  <span class="se-vol-value" id="se-vol-value-8">100%</span>
+</div>
+        <div class="se-name">未割当</div>
+      </div>
     </div>
   </section>
 
   <!-- 🎶 プレイリスト機能 -->
+   <div class="playlist-wrapper">
   <section>
     <h2>📂 プレイリスト</h2>
     <input type="file" id="fileInput" accept="audio/*" multiple>
     <ul id="playlist"></ul>
-    <div class="controls">
-      <button id="play">▶️ 再生</button>
-      <button id="pause">⏸ 一時停止</button>
-      <button id="stop">⏹ 停止</button>
-      <button id="loop">🔁 ループOFF</button>
-      <button id="clear">🗑 全削除</button>
-    </div>
+  <div class="controls">
+  <button id="prev">⏮ 前の曲</button>
+  <button id="play">▶️ 再生</button>
+  <button id="pause">⏸ 一時停止</button>
+  <button id="stop">⏹ 停止</button>
+  <button id="next">⏭ 次の曲</button>
+  <button id="shuffle">🔀 シャッフルOFF</button>
+  <button id="songloop">🔂 単曲ループOFF</button>
+  <button id="loop">🔁 プレイリストループOFF</button>
+  <button id="clear">🗑 全削除</button>
+</div>
     <p id="status">再生リスト：なし</p>
   </section>
+   </div>
 
   <script src="script.js"></script>
 </body>
