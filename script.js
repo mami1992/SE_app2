@@ -1,11 +1,13 @@
+/******************** 共通 ********************/
 const MAX_SAVE_SIZE_MB = 5;
 const volKey = (slot) => `se_${slot}_vol`; // 0.0〜1.0 を保存
-
 function bytesToMB(bytes) {
   return bytes / (1024 * 1024);
 }
 
-/******************** 🔊 SEボタン機能（個別音量対応） ********************/
+/*************************************************
+ * 🔊 SEボタン（1〜8）ローカル保存＋音量保存
+*************************************************/
 document.querySelectorAll(".se").forEach((se) => {
   const slot = se.dataset.slot;
   const playBtn = se.querySelector(".se-play");
@@ -13,36 +15,32 @@ document.querySelectorAll(".se").forEach((se) => {
   const resetBtn = se.querySelector(".reset-btn");
   const nameEl = se.querySelector(".se-name");
 
-  // 音量UI
   const volSlider = se.querySelector(`.se-vol-slider[data-slot="${slot}"]`);
   const volValue = document.getElementById(`se-vol-value-${slot}`);
 
   let currentAudio = null;
   let isPlayingSE = false;
 
-  // 音量の初期値（保存が無ければ 1.0）
+  // 🔊 保存済み音量の適用
   const savedVol = parseFloat(localStorage.getItem(volKey(slot)) ?? "1");
   if (volSlider) {
-    const percent = Math.round(savedVol * 100);
-    volSlider.value = percent;
-    if (volValue) volValue.textContent = `${percent}%`;
+    volSlider.value = Math.round(savedVol * 100);
+    if (volValue) volValue.textContent = `${Math.round(savedVol * 100)}%`;
   }
 
-  // Audio を作る時に、保存済みの音量を適用
   const makeAudio = (src) => {
     const a = new Audio(src);
     a.volume = parseFloat(localStorage.getItem(volKey(slot)) ?? "1");
     return a;
   };
 
-  // 保存済みの音源があれば読み込む
+  // 🔊 保存済み音源の復元
   const savedData = localStorage.getItem(`se_${slot}_data`);
   const savedName = localStorage.getItem(`se_${slot}_name`);
   if (savedData) {
     currentAudio = makeAudio(savedData);
-    nameEl.textContent = savedName || "保存音源";
+    nameEl.textContent = savedName ?? "保存音源";
   } else {
-    currentAudio = null;
     nameEl.textContent = "未割当";
   }
 
@@ -52,6 +50,7 @@ document.querySelectorAll(".se").forEach((se) => {
       alert("このSEボタンにはまだ音がセットされていません。");
       return;
     }
+
     if (!isPlayingSE) {
       currentAudio.currentTime = 0;
       currentAudio.play();
@@ -63,13 +62,14 @@ document.querySelectorAll(".se").forEach((se) => {
       isPlayingSE = false;
       playBtn.style.backgroundColor = "#ffcc66";
     }
+
     currentAudio.onended = () => {
       isPlayingSE = false;
       playBtn.style.backgroundColor = "#ffcc66";
     };
   });
 
-  // 🎵 セット（音変更）
+  // 🎵 セット
   setInput.addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -93,10 +93,10 @@ document.querySelectorAll(".se").forEach((se) => {
       alert(`SE${slot} に「${file.name}」をセットしました！`);
     };
     reader.readAsDataURL(file);
-    e.target.value = ""; // 同じファイルを続けて選べるようにクリア
+    e.target.value = "";
   });
 
-  // 🔄 リセット（音源のみ空にし、音量は保持）
+  // 🔄 リセット
   resetBtn.addEventListener("click", () => {
     if (currentAudio && !currentAudio.paused) currentAudio.pause();
     localStorage.removeItem(`se_${slot}_data`);
@@ -104,24 +104,22 @@ document.querySelectorAll(".se").forEach((se) => {
     currentAudio = null;
     nameEl.textContent = "未割当";
     playBtn.style.backgroundColor = "#ffcc66";
-    alert(`SE${slot} を未割当へリセットしました（音量設定は保持）。`);
   });
 
-  // 🔊 音量変更（0〜100 → 0.0〜1.0）
+  // 🔊 音量変更
   if (volSlider) {
     volSlider.addEventListener("input", () => {
-      const vol = Math.max(0, Math.min(100, parseInt(volSlider.value, 10))) / 100;
+      const vol = parseInt(volSlider.value, 10) / 100;
       localStorage.setItem(volKey(slot), String(vol));
       if (volValue) volValue.textContent = `${Math.round(vol * 100)}%`;
-      if (currentAudio) currentAudio.volume = vol; // 再生中にも即反映
+      if (currentAudio) currentAudio.volume = vol;
     });
   }
 });
 
-/******************** 🎶 プレイリスト機能（途中停止対応） ********************/
-// =====================
-// プレイリスト・プレイヤー
-// =====================
+/*************************************************
+ * 🎶 プレイリスト（複数曲・音量・削除・前後・シャッフル）
+*************************************************/
 const fileInput = document.getElementById('fileInput');
 const listEl = document.getElementById('playlist');
 const statusEl = document.getElementById('status');
@@ -139,100 +137,62 @@ const btnClear = document.getElementById('clear');
 let playlist = [];
 let currentIndex = -1;
 
-let isLoop = false;          // プレイリスト全体ループ
-let isShuffle = false;       // シャッフル
-let isSongLoop = false;      // 単曲ループ（Audio.loop）
+let isLoop = false;
+let isShuffle = false;
+let isSongLoop = false;
 
 const player = new Audio();
 
+/************************************
+ * 🎵 曲追加（複数追加OK）
+ ************************************/
+fileInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
 
+  files.forEach(f => {
+    const url = URL.createObjectURL(f);
+    playlist.push({
+      name: f.name,
+      url: url,
+      volume: 1.0
+    });
+  });
 
-// -------- 再生 --------
+  renderList();
+  updateStatus();
+  fileInput.value = "";
+});
+
+/************************************
+ * ▶️ 再生ボタン（続きから再生対応）
+ ************************************/
 btnPlay.addEventListener('click', () => {
   if (playlist.length === 0) return;
+
+  // 🔵 一時停止 → 再開
+  if (player.src && currentIndex !== -1 && player.paused) {
+    player.play();
+    updateStatus(`再生中：${playlist[currentIndex].name}`);
+    return;
+  }
+
+  // 🔵 初回または曲切り替え
   if (currentIndex === -1) currentIndex = 0;
   playCurrent();
 });
 
-// ======== 一時停止 ========
+/************************************
+ * 一時停止
+ ************************************/
 btnPause.addEventListener('click', () => {
   player.pause();
   updateStatus('(一時停止)');
 });
 
-// ======== 停止 ========
+/************************************
+ * 停止
+ ************************************/
 btnStop.addEventListener('click', stopPlayback);
-
-// ======== 次の曲（NEXT） ========
-btnNext.addEventListener('click', () => {
-  goNext(false);
-});
-
-// ======== 前の曲（PREV） ========
-btnPrev.addEventListener('click', () => {
-  goPrev();
-});
-
-// ======== シャッフル切替 ========
-btnShuffle.addEventListener('click', () => {
-  isShuffle = !isShuffle;
-  btnShuffle.textContent = isShuffle ? '🔀 シャッフルON' : '🔀 シャッフルOFF';
-});
-
-// ======== 単曲ループ（Audio.loop利用） ========
-btnSongLoop.addEventListener('click', () => {
-  isSongLoop = !isSongLoop;
-  player.loop = isSongLoop;
-  btnSongLoop.textContent = isSongLoop ? '🔂 単曲ループON' : '🔂 単曲ループOFF';
-});
-
-// ======== プレイリストループ ========
-btnLoop.addEventListener('click', () => {
-  isLoop = !isLoop;
-  btnLoop.textContent = isLoop ? '🔁 プレイリストループON' : '🔁 プレイリストループOFF';
-});
-
-// ======== 全削除 ========
-btnClear.addEventListener('click', () => {
-  stopPlayback();
-  clearPlaylist();
-  renderList();
-  updateStatus();
-  fileInput.value = '';
-});
-
-// 曲終了時の動作
-player.addEventListener('ended', () => {
-  if (isSongLoop) return; // 単曲ループ時はそのまま戻る
-  goNext(true);
-});
-
-// ------ リストクリックで再生 ------
-listEl.addEventListener('click', (e) => {
-  const li = e.target.closest('li[data-index]');
-  if (!li) return;
-  currentIndex = Number(li.dataset.index);
-  playCurrent();
-});
-
-// ------ キーボード操作（右＝次） ------
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight') goNext(false);
-});
-
-// =========================
-// 再生関数
-// =========================
-function playCurrent() {
-  if (currentIndex < 0 || currentIndex >= playlist.length) return;
-  const item = playlist[currentIndex];
-  player.src = item.url;
-  player.play();
-  renderList();
-  updateStatus(`再生中：${item.name}`);
-}
-
-// 停止
 function stopPlayback() {
   player.pause();
   player.currentTime = 0;
@@ -240,9 +200,11 @@ function stopPlayback() {
   renderList();
 }
 
-// =========================
-// 次の曲ロジック
-// =========================
+/************************************
+ * 次の曲
+ ************************************/
+btnNext.addEventListener('click', () => goNext(false));
+
 function goNext(triggeredByEnded) {
   if (playlist.length === 0) return;
 
@@ -258,9 +220,8 @@ function goNext(triggeredByEnded) {
 
   currentIndex++;
   if (currentIndex >= playlist.length) {
-    if (isLoop) {
-      currentIndex = 0;
-    } else {
+    if (isLoop) currentIndex = 0;
+    else {
       if (triggeredByEnded) stopPlayback();
       currentIndex = playlist.length - 1;
       return;
@@ -269,9 +230,11 @@ function goNext(triggeredByEnded) {
   playCurrent();
 }
 
-// =========================
-// 前の曲ロジック
-// =========================
+/************************************
+ * 前の曲
+ ************************************/
+btnPrev.addEventListener('click', () => goPrev());
+
 function goPrev() {
   if (playlist.length === 0) return;
 
@@ -287,9 +250,8 @@ function goPrev() {
 
   currentIndex--;
   if (currentIndex < 0) {
-    if (isLoop) {
-      currentIndex = playlist.length - 1;
-    } else {
+    if (isLoop) currentIndex = playlist.length - 1;
+    else {
       currentIndex = 0;
       return;
     }
@@ -297,22 +259,126 @@ function goPrev() {
   playCurrent();
 }
 
-// =========================
-// リスト描画・整備
-// =========================
+/************************************
+ * シャッフル
+ ************************************/
+btnShuffle.addEventListener('click', () => {
+  isShuffle = !isShuffle;
+  btnShuffle.textContent = isShuffle ? '🔀 シャッフルON' : '🔀 シャッフルOFF';
+});
+
+/************************************
+ * 単曲ループ
+ ************************************/
+btnSongLoop.addEventListener('click', () => {
+  isSongLoop = !isSongLoop;
+  player.loop = isSongLoop;
+  btnSongLoop.textContent = isSongLoop ? '🔂 単曲ループON' : '🔂 単曲ループOFF';
+});
+
+/************************************
+ * プレイリストループ
+ ************************************/
+btnLoop.addEventListener('click', () => {
+  isLoop = !isLoop;
+  btnLoop.textContent = isLoop ? '🔁 プレイリストループON' : '🔁 プレイリストループOFF';
+});
+
+/************************************
+ * 全削除
+ ************************************/
+btnClear.addEventListener('click', () => {
+  stopPlayback();
+  clearPlaylist();
+  renderList();
+  updateStatus();
+  fileInput.value = '';
+});
+
+function clearPlaylist() {
+  playlist.forEach(t => URL.revokeObjectURL(t.url));
+  playlist = [];
+  currentIndex = -1;
+}
+
+/************************************
+ * 曲終了時
+ ************************************/
+player.addEventListener('ended', () => {
+  if (isSongLoop) return;
+  goNext(true);
+});
+
+/************************************
+ * 曲を再生
+ ************************************/
+function playCurrent() {
+  if (currentIndex < 0 || currentIndex >= playlist.length) return;
+
+  const item = playlist[currentIndex];
+  player.src = item.url;
+  player.volume = item.volume ?? 1;
+  player.play();
+
+  renderList();
+  updateStatus(`再生中：${item.name}`);
+}
+
+/************************************
+ * プレイリスト描画（音量＋削除）
+ ************************************/
 function renderList() {
   listEl.innerHTML = '';
+
   playlist.forEach((track, i) => {
     const li = document.createElement('li');
     li.dataset.index = i;
-    li.textContent = track.name;
-    if (i === currentIndex && !player.paused) {
-      li.classList.add('active');
-    }
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = track.name;
+
+    const volSlider = document.createElement('input');
+    volSlider.type = 'range';
+    volSlider.min = 0;
+    volSlider.max = 100;
+    volSlider.value = Math.round((track.volume ?? 1) * 100);
+    volSlider.style.width = '80px';
+
+    volSlider.addEventListener('input', () => {
+      track.volume = volSlider.value / 100;
+      if (i === currentIndex) player.volume = track.volume;
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '削除';
+    deleteBtn.addEventListener('click', () => {
+      URL.revokeObjectURL(track.url);
+      playlist.splice(i, 1);
+
+      if (i === currentIndex) {
+        stopPlayback();
+        currentIndex = -1;
+      } else if (i < currentIndex) {
+        currentIndex--;
+      }
+
+      renderList();
+      updateStatus();
+    });
+
+    if (i === currentIndex && !player.paused) li.classList.add('active');
+
+    li.appendChild(nameSpan);
+    li.appendChild(volSlider);
+    li.appendChild(deleteBtn);
+
     listEl.appendChild(li);
   });
 }
 
+/************************************
+ * 再生ステータス表示
+ ************************************/
 function updateStatus(extra = '') {
   if (playlist.length === 0) {
     statusEl.textContent = '再生リスト：なし';
@@ -322,27 +388,3 @@ function updateStatus(extra = '') {
     ? playlist[currentIndex].name : '未選択';
   statusEl.textContent = `再生リスト：${playlist.length}曲 / 現在：${now} ${extra}`;
 }
-
-function clearPlaylist() {
-  playlist.forEach(t => URL.revokeObjectURL(t.url));
-  playlist = [];
-  currentIndex = -1;
-}
-
-fileInput.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-
-  files.forEach(f => {
-    const url = URL.createObjectURL(f);
-    playlist.push({
-      name: f.name,
-      url: url
-    });
-  });
-
-  renderList();
-  updateStatus();
-
-  // input の選択状態をクリア（次の複数選択に備える）
-  fileInput.value = "";
-});

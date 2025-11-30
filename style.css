@@ -114,3 +114,10 @@ ul#playlist{ list-style:none; padding:0; margin:10px auto 0; max-width:520px; }
   width: 60%;
 }
 
+#playlist li input[type="range"] {
+  accent-color: #ff9900;
+}
+#playlist li.active {
+  background: #fff3d4;
+  font-weight: bold;
+}
